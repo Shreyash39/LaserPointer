@@ -1,0 +1,421 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>iPad Laser Pointer Extension</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+    tailwind.config = {
+        theme: {
+            extend: {
+                colors: {
+                    'ios-blue': '#007AFF',
+                    'ios-red': '#FF3B30',
+                    'ios-green': '#34C759',
+                    'ios-orange': '#FF9500',
+                    'ios-gray': '#8E8E93',
+                    'ios-light': '#F2F2F7'
+                },
+                fontFamily: {
+                    'ios': ['-apple-system', 'BlinkMacSystemFont', 'San Francisco', 'Helvetica Neue', 'sans-serif']
+                },
+                backdropBlur: {
+                    'ios': '20px'
+                }
+            }
+        }
+    };
+    </script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        /* Custom iOS-style backdrop blur */
+        .backdrop-blur-ios {
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+        }
+        
+        /* Canvas styling */
+        #drawingCanvas {
+            pointer-events: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            z-index: 9998;
+        }
+        
+        #drawingCanvas.active {
+            pointer-events: auto;
+        }
+        
+        /* Smooth transitions */
+        .transition-smooth {
+            transition: all 0.3s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+        }
+        
+        /* Touch feedback */
+        .touch-feedback:active {
+            transform: scale(0.95);
+        }
+        
+        /* Demo content styling */
+        .demo-content {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        }
+    </style>
+</head>
+<body class="font-ios bg-gray-50 overflow-x-hidden">
+    <!-- Demo Background Content -->
+    <div class="demo-content min-h-screen relative">
+        <!-- Header -->
+        <header class="bg-white/90 backdrop-blur-ios shadow-sm sticky top-0 z-10">
+            <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
+                <div class="flex items-center justify-between">
+                    <h1 class="text-2xl font-semibold text-gray-900">Demo Web Content</h1>
+                    <div class="flex space-x-4">
+                        <button class="text-ios-blue hover:text-blue-600 transition-colors">
+                            <i class="fas fa-search"></i>
+                        </button>
+                        <button class="text-ios-blue hover:text-blue-600 transition-colors">
+                            <i class="fas fa-bell"></i>
+                        </button>
+                        <button class="text-ios-blue hover:text-blue-600 transition-colors">
+                            <i class="fas fa-user"></i>
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </header>
+
+        <!-- Main Content Area -->
+        <main class="p-6 space-y-8">
+            <!-- Hero Section -->
+            <section class="bg-white rounded-2xl shadow-lg p-8">
+                <h2 class="text-3xl font-bold text-gray-900 mb-4">Sample Content for Annotation</h2>
+                <p class="text-lg text-gray-600 mb-6">This is a demo page showing how the laser pointer extension would work on any web content. You can circle important elements, underline text, or draw arrows to highlight specific areas.</p>
+                
+                <!-- Interactive Elements -->
+                <div class="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
+                    <div class="bg-ios-light rounded-xl p-6">
+                        <h3 class="font-semibold text-gray-900 mb-2">Important Button</h3>
+                        <button class="bg-ios-blue text-white px-6 py-3 rounded-lg font-medium hover:bg-blue-600 transition-colors">
+                            Click Here
+                        </button>
+                    </div>
+                    
+                    <div class="bg-ios-light rounded-xl p-6">
+                        <h3 class="font-semibold text-gray-900 mb-2">Key Information</h3>
+                        <p class="text-gray-600">This text might need to be underlined or highlighted during a presentation.</p>
+                    </div>
+                    
+                    <div class="bg-ios-light rounded-xl p-6">
+                        <h3 class="font-semibold text-gray-900 mb-2">Navigation Icon</h3>
+                        <i class="fas fa-arrow-right text-2xl text-ios-blue"></i>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Additional Content -->
+            <section class="bg-white rounded-2xl shadow-lg p-8">
+                <h2 class="text-2xl font-bold text-gray-900 mb-4">More Content to Annotate</h2>
+                <div class="prose max-w-none">
+                    <p class="text-gray-600 mb-4">Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris.</p>
+                    <ul class="list-disc list-inside text-gray-600 space-y-2">
+                        <li>First important point that might need highlighting</li>
+                        <li>Second key item for annotation</li>
+                        <li>Third critical element for emphasis</li>
+                    </ul>
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <!-- Drawing Canvas Overlay -->
+    <canvas id="drawingCanvas" class="cursor-crosshair"></canvas>
+
+    <!-- @COMPONENT: FloatingToolbar -->
+    <!-- Floating Action Button -->
+    <div id="floatingButton" class="fixed bottom-6 right-6 z-50">
+        <button id="mainToggle" class="w-14 h-14 bg-ios-blue text-white rounded-full shadow-lg hover:shadow-xl transition-all duration-300 touch-feedback flex items-center justify-center">
+            <i class="fas fa-laser-pointer text-xl"></i>
+        </button>
+    </div>
+
+    <!-- Floating Toolbar Panel -->
+    <div id="toolbarPanel" class="fixed bottom-24 right-6 z-50 transform translate-y-4 opacity-0 invisible transition-smooth">
+        <div class="bg-white/95 backdrop-blur-ios rounded-2xl shadow-2xl p-4 w-80">
+            <!-- @COMPONENT: ToolHeader -->
+            <div class="flex items-center justify-between mb-4">
+                <h3 class="font-semibold text-gray-900">Laser Pointer Tools</h3>
+                <button id="closePanel" class="w-8 h-8 rounded-full bg-gray-100 hover:bg-gray-200 flex items-center justify-center transition-colors">
+                    <i class="fas fa-times text-sm text-gray-500"></i>
+                </button>
+            </div>
+
+            <!-- @COMPONENT: ModeSelector -->
+            <div class="mb-6">
+                <div class="flex bg-ios-light rounded-xl p-1">
+                    <button id="laserMode" class="flex-1 py-2 px-4 rounded-lg bg-white shadow-sm text-ios-blue font-medium text-sm transition-colors">
+                        <i class="fas fa-laser-pointer mr-2"></i>Laser
+                    </button>
+                    <button id="touchMode" class="flex-1 py-2 px-4 rounded-lg text-gray-600 font-medium text-sm transition-colors">
+                        <i class="fas fa-hand-pointer mr-2"></i>Touch
+                    </button>
+                </div>
+            </div>
+
+            <!-- @COMPONENT: DrawingTools -->
+            <div class="mb-6">
+                <h4 class="text-sm font-medium text-gray-700 mb-3">Drawing Tools</h4>
+                <div class="grid grid-cols-4 gap-2">
+                    <button class="drawing-tool active w-12 h-12 rounded-xl bg-ios-blue/10 text-ios-blue hover:bg-ios-blue/20 flex items-center justify-center transition-colors" data-tool="freehand">
+                        <i class="fas fa-pencil-alt"></i>
+                    </button>
+                    <button class="drawing-tool w-12 h-12 rounded-xl bg-gray-100 text-gray-600 hover:bg-gray-200 flex items-center justify-center transition-colors" data-tool="circle">
+                        <i class="far fa-circle"></i>
+                    </button>
+                    <button class="drawing-tool w-12 h-12 rounded-xl bg-gray-100 text-gray-600 hover:bg-gray-200 flex items-center justify-center transition-colors" data-tool="underline">
+                        <i class="fas fa-underline"></i>
+                    </button>
+                    <button class="drawing-tool w-12 h-12 rounded-xl bg-gray-100 text-gray-600 hover:bg-gray-200 flex items-center justify-center transition-colors" data-tool="arrow">
+                        <i class="fas fa-long-arrow-alt-right"></i>
+                    </button>
+                </div>
+            </div>
+
+            <!-- @COMPONENT: ColorPicker -->
+            <div class="mb-6">
+                <h4 class="text-sm font-medium text-gray-700 mb-3">Laser Color</h4>
+                <div class="flex space-x-2">
+                    <button class="color-option active w-8 h-8 rounded-full bg-ios-red border-2 border-ios-red shadow-md" data-color="#FF3B30"></button>
+                    <button class="color-option w-8 h-8 rounded-full bg-ios-blue border-2 border-transparent hover:border-gray-300 shadow-md" data-color="#007AFF"></button>
+                    <button class="color-option w-8 h-8 rounded-full bg-ios-green border-2 border-transparent hover:border-gray-300 shadow-md" data-color="#34C759"></button>
+                    <button class="color-option w-8 h-8 rounded-full bg-ios-orange border-2 border-transparent hover:border-gray-300 shadow-md" data-color="#FF9500"></button>
+                    <button class="color-option w-8 h-8 rounded-full bg-gray-900 border-2 border-transparent hover:border-gray-300 shadow-md" data-color="#1C1C1E"></button>
+                </div>
+            </div>
+
+            <!-- @COMPONENT: ThicknessControl -->
+            <div class="mb-6">
+                <h4 class="text-sm font-medium text-gray-700 mb-3">Line Thickness</h4>
+                <div class="flex items-center space-x-3">
+                    <span class="text-xs text-gray-500">Thin</span>
+                    <input type="range" id="thicknessSlider" min="2" max="12" value="4" class="flex-1 accent-ios-blue">
+                    <span class="text-xs text-gray-500">Thick</span>
+                </div>
+                <div class="mt-2 h-1 bg-ios-red rounded-full" id="thicknessPreview" style="height: 4px;"></div>
+            </div>
+
+            <!-- @COMPONENT: ActionButtons -->
+            <div class="flex space-x-2">
+                <button id="clearCanvas" class="flex-1 py-3 px-4 bg-gray-100 text-gray-700 rounded-xl font-medium hover:bg-gray-200 transition-colors">
+                    <i class="fas fa-eraser mr-2"></i>Clear All
+                </button>
+                <button id="undoLast" class="flex-1 py-3 px-4 bg-ios-blue text-white rounded-xl font-medium hover:bg-blue-600 transition-colors">
+                    <i class="fas fa-undo mr-2"></i>Undo
+                </button>
+            </div>
+        </div>
+    </div>
+    <!-- @END_COMPONENT: FloatingToolbar -->
+
+    <!-- Status Indicator -->
+    <div id="statusIndicator" class="fixed top-6 right-6 z-40 bg-white/95 backdrop-blur-ios rounded-full px-4 py-2 shadow-lg transform translate-y-2 opacity-0 invisible transition-smooth">
+        <div class="flex items-center space-x-2">
+            <div class="w-2 h-2 bg-ios-red rounded-full animate-pulse"></div>
+            <span class="text-sm font-medium text-gray-900">Laser Mode Active</span>
+        </div>
+    </div>
+
+    <script>
+        // TODO: Implement full drawing functionality with Apple Pencil support
+        (function() {
+            const canvas = document.getElementById('drawingCanvas');
+            const ctx = canvas.getContext('2d');
+            const mainToggle = document.getElementById('mainToggle');
+            const toolbarPanel = document.getElementById('toolbarPanel');
+            const closePanel = document.getElementById('closePanel');
+            const laserMode = document.getElementById('laserMode');
+            const touchMode = document.getElementById('touchMode');
+            const statusIndicator = document.getElementById('statusIndicator');
+            const clearCanvas = document.getElementById('clearCanvas');
+            const undoLast = document.getElementById('undoLast');
+            const thicknessSlider = document.getElementById('thicknessSlider');
+            const thicknessPreview = document.getElementById('thicknessPreview');
+
+            let isDrawing = false;
+            let isLaserMode = false;
+            let currentTool = 'freehand';
+            let currentColor = '#FF3B30';
+            let currentThickness = 4;
+            let drawings = [];
+
+            // Initialize canvas
+            function resizeCanvas() {
+                canvas.width = window.innerWidth;
+                canvas.height = window.innerHeight;
+            }
+            
+            resizeCanvas();
+            window.addEventListener('resize', resizeCanvas);
+
+            // Toggle main panel
+            mainToggle.addEventListener('click', function() {
+                const isVisible = !toolbarPanel.classList.contains('invisible');
+                if (isVisible) {
+                    hidePanel();
+                } else {
+                    showPanel();
+                }
+            });
+
+            function showPanel() {
+                toolbarPanel.classList.remove('invisible', 'opacity-0', 'translate-y-4');
+                toolbarPanel.classList.add('opacity-100', 'translate-y-0');
+            }
+
+            function hidePanel() {
+                toolbarPanel.classList.remove('opacity-100', 'translate-y-0');
+                toolbarPanel.classList.add('opacity-0', 'translate-y-4');
+                setTimeout(() => {
+                    toolbarPanel.classList.add('invisible');
+                }, 300);
+            }
+
+            closePanel.addEventListener('click', hidePanel);
+
+            // Mode switching
+            laserMode.addEventListener('click', function() {
+                isLaserMode = true;
+                canvas.classList.add('active');
+                laserMode.classList.add('bg-white', 'shadow-sm', 'text-ios-blue');
+                laserMode.classList.remove('text-gray-600');
+                touchMode.classList.remove('bg-white', 'shadow-sm', 'text-ios-blue');
+                touchMode.classList.add('text-gray-600');
+                
+                // Show status indicator
+                statusIndicator.classList.remove('invisible', 'opacity-0', 'translate-y-2');
+                statusIndicator.classList.add('opacity-100', 'translate-y-0');
+            });
+
+            touchMode.addEventListener('click', function() {
+                isLaserMode = false;
+                canvas.classList.remove('active');
+                touchMode.classList.add('bg-white', 'shadow-sm', 'text-ios-blue');
+                touchMode.classList.remove('text-gray-600');
+                laserMode.classList.remove('bg-white', 'shadow-sm', 'text-ios-blue');
+                laserMode.classList.add('text-gray-600');
+                
+                // Hide status indicator
+                statusIndicator.classList.remove('opacity-100', 'translate-y-0');
+                statusIndicator.classList.add('opacity-0', 'translate-y-2');
+                setTimeout(() => {
+                    statusIndicator.classList.add('invisible');
+                }, 300);
+            });
+
+            // Drawing tools
+            document.querySelectorAll('.drawing-tool').forEach(tool => {
+                tool.addEventListener('click', function() {
+                    document.querySelectorAll('.drawing-tool').forEach(t => {
+                        t.classList.remove('active', 'bg-ios-blue/10', 'text-ios-blue');
+                        t.classList.add('bg-gray-100', 'text-gray-600');
+                    });
+                    this.classList.add('active', 'bg-ios-blue/10', 'text-ios-blue');
+                    this.classList.remove('bg-gray-100', 'text-gray-600');
+                    currentTool = this.dataset.tool;
+                });
+            });
+
+            // Color selection
+            document.querySelectorAll('.color-option').forEach(color => {
+                color.addEventListener('click', function() {
+                    document.querySelectorAll('.color-option').forEach(c => {
+                        c.classList.remove('active', 'border-ios-red', 'border-ios-blue', 'border-ios-green', 'border-ios-orange', 'border-gray-900');
+                        c.classList.add('border-transparent');
+                    });
+                    this.classList.add('active');
+                    currentColor = this.dataset.color;
+                    
+                    // Update border color based on selection
+                    const colorMap = {
+                        '#FF3B30': 'border-ios-red',
+                        '#007AFF': 'border-ios-blue', 
+                        '#34C759': 'border-ios-green',
+                        '#FF9500': 'border-ios-orange',
+                        '#1C1C1E': 'border-gray-900'
+                    };
+                    this.classList.add(colorMap[currentColor]);
+                    
+                    // Update thickness preview color
+                    thicknessPreview.style.backgroundColor = currentColor;
+                });
+            });
+
+            // Thickness control
+            thicknessSlider.addEventListener('input', function() {
+                currentThickness = this.value;
+                thicknessPreview.style.height = currentThickness + 'px';
+            });
+
+            // Canvas drawing (simplified for demo)
+            canvas.addEventListener('touchstart', startDrawing, { passive: false });
+            canvas.addEventListener('touchmove', draw, { passive: false });
+            canvas.addEventListener('touchend', stopDrawing);
+            canvas.addEventListener('mousedown', startDrawing);
+            canvas.addEventListener('mousemove', draw);
+            canvas.addEventListener('mouseup', stopDrawing);
+
+            function startDrawing(e) {
+                if (!isLaserMode) return;
+                e.preventDefault();
+                isDrawing = true;
+                
+                const rect = canvas.getBoundingClientRect();
+                const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+                const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+                const x = clientX - rect.left;
+                const y = clientY - rect.top;
+                
+                ctx.beginPath();
+                ctx.moveTo(x, y);
+                ctx.strokeStyle = currentColor;
+                ctx.lineWidth = currentThickness;
+                ctx.lineCap = 'round';
+                ctx.lineJoin = 'round';
+            }
+
+            function draw(e) {
+                if (!isDrawing || !isLaserMode) return;
+                e.preventDefault();
+                
+                const rect = canvas.getBoundingClientRect();
+                const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+                const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+                const x = clientX - rect.left;
+                const y = clientY - rect.top;
+                
+                ctx.lineTo(x, y);
+                ctx.stroke();
+            }
+
+            function stopDrawing() {
+                if (!isLaserMode) return;
+                isDrawing = false;
+            }
+
+            // Clear canvas
+            clearCanvas.addEventListener('click', function() {
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
+                drawings = [];
+            });
+
+            // Undo functionality (simplified)
+            undoLast.addEventListener('click', function() {
+                // TODO: Implement proper undo functionality with drawing history
+                console.log('Undo last drawing action');
+            });
+        })();
+    </script>
+</body>
+</html>

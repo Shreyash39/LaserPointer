@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { X, Edit3, Circle, Minus, ArrowRight, Eraser, Undo, Settings, Zap } from 'lucide-react';
+import { useState, useRef, useEffect } from 'react';
+import { X, Edit3, Circle, Minus, ArrowRight, Eraser, Undo, Settings, Zap, ArrowLeft } from 'lucide-react';
 import { useDrawing, DrawingTool } from '@/hooks/useDrawing';
 
 interface FloatingToolbarProps {
@@ -24,12 +24,14 @@ const drawingTools = [
   { id: 'circle' as DrawingTool, icon: Circle, label: 'Circle' },
   { id: 'underline' as DrawingTool, icon: Minus, label: 'Underline' },
   { id: 'arrow' as DrawingTool, icon: ArrowRight, label: 'Arrow' },
+  { id: 'eraser' as DrawingTool, icon: Eraser, label: 'Eraser' },
 ];
 
 export default function FloatingToolbar({ drawingHook }: FloatingToolbarProps) {
-  const [showMainPanel, setShowMainPanel] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [currentMode, setCurrentMode] = useState<'laser' | 'pen'>('laser');
+  const [isDragging, setIsDragging] = useState(false);
+  const dragRef = useRef<{ startX: number; startY: number }>({ startX: 0, startY: 0 });
   
   const {
     state,
@@ -40,15 +42,17 @@ export default function FloatingToolbar({ drawingHook }: FloatingToolbarProps) {
     setPointerMode,
     clearCanvas,
     undoLastDrawing,
+    toggleMenu,
+    hideMenu,
+    updateMenuPosition,
   } = drawingHook;
-
-  const toggleMainPanel = () => {
-    setShowMainPanel(!showMainPanel);
-    setShowSettings(false);
-  };
 
   const toggleSettings = () => {
     setShowSettings(!showSettings);
+  };
+
+  const goBackToMenu = () => {
+    setShowSettings(false);
   };
 
   const handleModeSwitch = (mode: 'laser' | 'pen') => {
@@ -56,11 +60,71 @@ export default function FloatingToolbar({ drawingHook }: FloatingToolbarProps) {
     setPointerMode(mode);
     setLaserMode(true); // Always keep laser mode active for drawing
     setTool('freehand'); // Default to freehand drawing
+    hideMenu(); // Auto-hide menu when tool is selected
   };
 
   const handleToolSelect = (tool: DrawingTool) => {
     setTool(tool);
+    hideMenu(); // Auto-hide menu when tool is selected
   };
+
+  const handleDragStart = (e: React.MouseEvent | React.TouchEvent) => {
+    e.preventDefault();
+    setIsDragging(true);
+    
+    const clientX = 'touches' in e ? e.touches[0].clientX : e.clientX;
+    const clientY = 'touches' in e ? e.touches[0].clientY : e.clientY;
+    
+    dragRef.current = {
+      startX: clientX - state.menuPosition.x,
+      startY: clientY - state.menuPosition.y,
+    };
+  };
+
+  const handleDragMove = (e: MouseEvent | TouchEvent) => {
+    if (!isDragging) return;
+    
+    const clientX = 'touches' in e ? e.touches[0].clientX : e.clientX;
+    const clientY = 'touches' in e ? e.touches[0].clientY : e.clientY;
+    
+    const newX = clientX - dragRef.current.startX;
+    const newY = clientY - dragRef.current.startY;
+    
+    // Keep within screen bounds
+    const maxX = window.innerWidth - 60;
+    const maxY = window.innerHeight - 60;
+    
+    updateMenuPosition({
+      x: Math.max(0, Math.min(maxX, newX)),
+      y: Math.max(0, Math.min(maxY, newY)),
+    });
+  };
+
+  const handleDragEnd = () => {
+    setIsDragging(false);
+  };
+
+  // Add event listeners for dragging
+  useEffect(() => {
+    if (isDragging) {
+      const handleMouseMove = (e: MouseEvent) => handleDragMove(e);
+      const handleMouseUp = () => handleDragEnd();
+      const handleTouchMove = (e: TouchEvent) => handleDragMove(e);
+      const handleTouchEnd = () => handleDragEnd();
+
+      document.addEventListener('mousemove', handleMouseMove);
+      document.addEventListener('mouseup', handleMouseUp);
+      document.addEventListener('touchmove', handleTouchMove);
+      document.addEventListener('touchend', handleTouchEnd);
+
+      return () => {
+        document.removeEventListener('mousemove', handleMouseMove);
+        document.removeEventListener('mouseup', handleMouseUp);
+        document.removeEventListener('touchmove', handleTouchMove);
+        document.removeEventListener('touchend', handleTouchEnd);
+      };
+    }
+  }, [isDragging]);
 
   const handleColorSelect = (color: string) => {
     setColor(color);
@@ -72,10 +136,18 @@ export default function FloatingToolbar({ drawingHook }: FloatingToolbarProps) {
 
   return (
     <>
-      {/* Main Floating Action Button */}
-      <div className="fixed bottom-6 right-6 z-50">
+      {/* Main Floating Action Button - Draggable */}
+      <div 
+        className="fixed z-50 cursor-move select-none"
+        style={{ 
+          left: `${state.menuPosition.x}px`, 
+          top: `${state.menuPosition.y}px` 
+        }}
+        onMouseDown={handleDragStart}
+        onTouchStart={handleDragStart}
+      >
         <button
-          onClick={toggleMainPanel}
+          onClick={toggleMenu}
           className="w-14 h-14 bg-[color:var(--ios-blue)] text-white rounded-full shadow-lg hover:shadow-xl transition-all duration-300 touch-feedback flex items-center justify-center"
         >
           <Edit3 className="w-5 h-5" />
@@ -83,17 +155,21 @@ export default function FloatingToolbar({ drawingHook }: FloatingToolbarProps) {
       </div>
 
       {/* Simple Mode Selection Panel */}
-      <div className={`fixed bottom-24 right-6 z-50 transform transition-smooth ${
-        showMainPanel && !showSettings
+      <div className={`fixed z-50 transform transition-smooth ${
+        state.isMenuVisible && !showSettings
           ? 'translate-y-0 opacity-100 visible' 
           : 'translate-y-4 opacity-0 invisible'
-      }`}>
+      }`}
+      style={{ 
+        left: `${state.menuPosition.x}px`, 
+        top: `${state.menuPosition.y + 80}px` 
+      }}>
         <div className="floating-panel p-4 w-64">
           {/* Header */}
           <div className="flex items-center justify-between mb-4">
             <h3 className="font-semibold text-gray-900">Laser Tools</h3>
             <button
-              onClick={() => setShowMainPanel(false)}
+              onClick={hideMenu}
               className="w-8 h-8 rounded-full bg-gray-100 hover:bg-gray-200 flex items-center justify-center transition-colors"
             >
               <X className="w-4 h-4 text-gray-500" />
@@ -138,15 +214,27 @@ export default function FloatingToolbar({ drawingHook }: FloatingToolbarProps) {
       </div>
 
       {/* Detailed Settings Panel */}
-      <div className={`fixed bottom-24 right-6 z-50 transform transition-smooth ${
+      <div className={`fixed z-50 transform transition-smooth ${
         showSettings 
           ? 'translate-y-0 opacity-100 visible' 
           : 'translate-y-4 opacity-0 invisible'
-      }`}>
+      }`}
+      style={{ 
+        left: `${state.menuPosition.x}px`, 
+        top: `${state.menuPosition.y + 80}px` 
+      }}>
         <div className="floating-panel p-4 w-80">
           {/* Header */}
           <div className="flex items-center justify-between mb-4">
-            <h3 className="font-semibold text-gray-900">Settings</h3>
+            <div className="flex items-center">
+              <button
+                onClick={goBackToMenu}
+                className="w-8 h-8 rounded-full bg-gray-100 hover:bg-gray-200 flex items-center justify-center transition-colors mr-2"
+              >
+                <ArrowLeft className="w-4 h-4 text-gray-500" />
+              </button>
+              <h3 className="font-semibold text-gray-900">Settings</h3>
+            </div>
             <button
               onClick={() => setShowSettings(false)}
               className="w-8 h-8 rounded-full bg-gray-100 hover:bg-gray-200 flex items-center justify-center transition-colors"

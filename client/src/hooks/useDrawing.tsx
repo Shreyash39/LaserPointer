@@ -1,6 +1,6 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
 
-export type DrawingTool = 'freehand' | 'circle' | 'underline' | 'arrow';
+export type DrawingTool = 'freehand' | 'circle' | 'underline' | 'arrow' | 'eraser';
 export type PointerMode = 'laser' | 'pen';
 
 export interface DrawingState {
@@ -10,6 +10,8 @@ export interface DrawingState {
   currentColor: string;
   currentThickness: number;
   pointerMode: PointerMode;
+  isMenuVisible: boolean;
+  menuPosition: { x: number; y: number };
 }
 
 export interface Point {
@@ -36,12 +38,15 @@ export function useDrawing() {
     currentColor: '#FF3B30',
     currentThickness: 4,
     pointerMode: 'laser',
+    isMenuVisible: false,
+    menuPosition: { x: 20, y: 20 },
   });
   
   const [drawings, setDrawings] = useState<Drawing[]>([]);
   const [temporaryDrawings, setTemporaryDrawings] = useState<Drawing[]>([]);
   const currentDrawing = useRef<Drawing | null>(null);
   const fadeTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const lastLaserTimeRef = useRef<number>(0);
 
   const initializeCanvas = useCallback(() => {
     const canvas = canvasRef.current;
@@ -246,6 +251,9 @@ export function useDrawing() {
         // For laser mode, add to temporary drawings and set fade timer
         setTemporaryDrawings(prev => [...prev, drawing]);
         
+        // Update last laser time for continuous usage detection
+        lastLaserTimeRef.current = Date.now();
+        
         // Clear any existing timeout
         if (fadeTimeoutRef.current) {
           clearTimeout(fadeTimeoutRef.current);
@@ -253,8 +261,15 @@ export function useDrawing() {
         
         // Set new timeout to fade laser pointer after 1 second
         fadeTimeoutRef.current = setTimeout(() => {
-          setTemporaryDrawings([]);
+          // Only clear if no recent laser activity
+          const timeSinceLastLaser = Date.now() - lastLaserTimeRef.current;
+          if (timeSinceLastLaser >= 1000) {
+            setTemporaryDrawings([]);
+          }
         }, 1000);
+      } else if (state.currentTool === 'eraser') {
+        // For eraser mode, remove intersecting drawings
+        eraseDrawings(drawing.points);
       } else {
         // For pen mode, add to permanent drawings
         setDrawings(prev => [...prev, drawing]);
@@ -263,7 +278,7 @@ export function useDrawing() {
     
     currentDrawing.current = null;
     setState(prev => ({ ...prev, isDrawing: false }));
-  }, [state.isDrawing, state.pointerMode]);
+  }, [state.isDrawing, state.pointerMode, state.currentTool]);
 
   const setLaserMode = useCallback((isLaser: boolean) => {
     setState(prev => ({ ...prev, isLaserMode: isLaser }));
@@ -291,6 +306,23 @@ export function useDrawing() {
     setTemporaryDrawings([]);
   }, []);
 
+  const eraseDrawings = useCallback((eraserPoints: Point[]) => {
+    setDrawings(prev => {
+      return prev.filter(drawing => {
+        // Check if any eraser point intersects with drawing points
+        return !eraserPoints.some(eraserPoint => {
+          return drawing.points.some(drawingPoint => {
+            const distance = Math.sqrt(
+              Math.pow(eraserPoint.x - drawingPoint.x, 2) + 
+              Math.pow(eraserPoint.y - drawingPoint.y, 2)
+            );
+            return distance < 20; // Eraser radius
+          });
+        });
+      });
+    });
+  }, []);
+
   const clearCanvas = useCallback(() => {
     const context = contextRef.current;
     if (context) {
@@ -302,6 +334,18 @@ export function useDrawing() {
     if (fadeTimeoutRef.current) {
       clearTimeout(fadeTimeoutRef.current);
     }
+  }, []);
+
+  const toggleMenu = useCallback(() => {
+    setState(prev => ({ ...prev, isMenuVisible: !prev.isMenuVisible }));
+  }, []);
+
+  const hideMenu = useCallback(() => {
+    setState(prev => ({ ...prev, isMenuVisible: false }));
+  }, []);
+
+  const updateMenuPosition = useCallback((position: { x: number; y: number }) => {
+    setState(prev => ({ ...prev, menuPosition: position }));
   }, []);
 
   const undoLastDrawing = useCallback(() => {
@@ -325,5 +369,8 @@ export function useDrawing() {
     setPointerMode,
     clearCanvas,
     undoLastDrawing,
+    toggleMenu,
+    hideMenu,
+    updateMenuPosition,
   };
 }

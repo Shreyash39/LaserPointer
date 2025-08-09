@@ -150,6 +150,20 @@ export function useDrawing() {
     context.globalAlpha = 1;
   }, [drawings, temporaryDrawings, drawLaserStroke]);
 
+  // Effect to redraw canvas when temporary drawings change
+  useEffect(() => {
+    redrawCanvas();
+  }, [temporaryDrawings, redrawCanvas]);
+
+  // Cleanup effect
+  useEffect(() => {
+    return () => {
+      if (fadeTimeoutRef.current) {
+        clearTimeout(fadeTimeoutRef.current);
+      }
+    };
+  }, []);
+
   const getEventPoint = useCallback((e: MouseEvent | TouchEvent): Point => {
     const canvas = canvasRef.current;
     if (!canvas) return { x: 0, y: 0 };

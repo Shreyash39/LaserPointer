@@ -1,6 +1,7 @@
-import { useState, useRef, useCallback } from 'react';
+import { useState, useRef, useCallback, useEffect } from 'react';
 
 export type DrawingTool = 'freehand' | 'circle' | 'underline' | 'arrow';
+export type PointerMode = 'laser' | 'pen';
 
 export interface DrawingState {
   isDrawing: boolean;
@@ -8,6 +9,7 @@ export interface DrawingState {
   currentTool: DrawingTool;
   currentColor: string;
   currentThickness: number;
+  pointerMode: PointerMode;
 }
 
 export interface Point {
@@ -33,10 +35,13 @@ export function useDrawing() {
     currentTool: 'freehand',
     currentColor: '#FF3B30',
     currentThickness: 4,
+    pointerMode: 'laser',
   });
   
   const [drawings, setDrawings] = useState<Drawing[]>([]);
+  const [temporaryDrawings, setTemporaryDrawings] = useState<Drawing[]>([]);
   const currentDrawing = useRef<Drawing | null>(null);
+  const fadeTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   const initializeCanvas = useCallback(() => {
     const canvas = canvasRef.current;
@@ -69,6 +74,7 @@ export function useDrawing() {
 
     context.clearRect(0, 0, context.canvas.width, context.canvas.height);
 
+    // Draw permanent drawings (pen mode)
     drawings.forEach((drawing) => {
       context.strokeStyle = drawing.color;
       context.lineWidth = drawing.thickness;
@@ -84,7 +90,24 @@ export function useDrawing() {
         context.stroke();
       }
     });
-  }, [drawings]);
+
+    // Draw temporary drawings (laser mode)
+    temporaryDrawings.forEach((drawing) => {
+      context.strokeStyle = drawing.color;
+      context.lineWidth = drawing.thickness;
+      
+      if (drawing.points.length > 1) {
+        context.beginPath();
+        context.moveTo(drawing.points[0].x, drawing.points[0].y);
+        
+        for (let i = 1; i < drawing.points.length; i++) {
+          context.lineTo(drawing.points[i].x, drawing.points[i].y);
+        }
+        
+        context.stroke();
+      }
+    });
+  }, [drawings, temporaryDrawings]);
 
   const getEventPoint = useCallback((e: MouseEvent | TouchEvent): Point => {
     const canvas = canvasRef.current;
@@ -141,10 +164,27 @@ export function useDrawing() {
   const stopDrawing = useCallback(() => {
     if (!state.isDrawing || !currentDrawing.current) return;
     
-    setDrawings(prev => [...prev, currentDrawing.current!]);
+    if (state.pointerMode === 'laser') {
+      // For laser mode, add to temporary drawings and set fade timer
+      setTemporaryDrawings(prev => [...prev, currentDrawing.current!]);
+      
+      // Clear any existing timeout
+      if (fadeTimeoutRef.current) {
+        clearTimeout(fadeTimeoutRef.current);
+      }
+      
+      // Set new timeout to fade laser pointer after 2 seconds
+      fadeTimeoutRef.current = setTimeout(() => {
+        setTemporaryDrawings([]);
+      }, 2000);
+    } else {
+      // For pen mode, add to permanent drawings
+      setDrawings(prev => [...prev, currentDrawing.current!]);
+    }
+    
     currentDrawing.current = null;
     setState(prev => ({ ...prev, isDrawing: false }));
-  }, [state.isDrawing]);
+  }, [state.isDrawing, state.pointerMode]);
 
   const setLaserMode = useCallback((isLaser: boolean) => {
     setState(prev => ({ ...prev, isLaserMode: isLaser }));
@@ -162,12 +202,27 @@ export function useDrawing() {
     setState(prev => ({ ...prev, currentThickness: thickness }));
   }, []);
 
+  const setPointerMode = useCallback((mode: PointerMode) => {
+    setState(prev => ({ ...prev, pointerMode: mode }));
+    
+    // Clear temporary drawings when switching modes
+    if (fadeTimeoutRef.current) {
+      clearTimeout(fadeTimeoutRef.current);
+    }
+    setTemporaryDrawings([]);
+  }, []);
+
   const clearCanvas = useCallback(() => {
     const context = contextRef.current;
     if (context) {
       context.clearRect(0, 0, context.canvas.width, context.canvas.height);
     }
     setDrawings([]);
+    setTemporaryDrawings([]);
+    
+    if (fadeTimeoutRef.current) {
+      clearTimeout(fadeTimeoutRef.current);
+    }
   }, []);
 
   const undoLastDrawing = useCallback(() => {
@@ -179,6 +234,7 @@ export function useDrawing() {
     canvasRef,
     state,
     drawings,
+    temporaryDrawings,
     initializeCanvas,
     startDrawing,
     draw,
@@ -187,6 +243,7 @@ export function useDrawing() {
     setTool,
     setColor,
     setThickness,
+    setPointerMode,
     clearCanvas,
     undoLastDrawing,
   };

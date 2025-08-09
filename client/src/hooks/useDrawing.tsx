@@ -68,6 +68,55 @@ export function useDrawing() {
     };
   }, []);
 
+  const drawLaserStroke = useCallback((context: CanvasRenderingContext2D, drawing: Drawing) => {
+    if (drawing.points.length < 2) return;
+    
+    // Create glowing laser effect with multiple layers
+    const glowSize = drawing.thickness + 4;
+    
+    // Outer glow (lighter, wider)
+    context.shadowColor = drawing.color;
+    context.shadowBlur = glowSize * 2;
+    context.strokeStyle = drawing.color;
+    context.lineWidth = drawing.thickness + 2;
+    context.globalAlpha = 0.3;
+    
+    context.beginPath();
+    context.moveTo(drawing.points[0].x, drawing.points[0].y);
+    for (let i = 1; i < drawing.points.length; i++) {
+      context.lineTo(drawing.points[i].x, drawing.points[i].y);
+    }
+    context.stroke();
+    
+    // Inner glow (medium intensity)
+    context.shadowBlur = glowSize;
+    context.lineWidth = drawing.thickness + 1;
+    context.globalAlpha = 0.6;
+    
+    context.beginPath();
+    context.moveTo(drawing.points[0].x, drawing.points[0].y);
+    for (let i = 1; i < drawing.points.length; i++) {
+      context.lineTo(drawing.points[i].x, drawing.points[i].y);
+    }
+    context.stroke();
+    
+    // Core stroke (solid, darker center)
+    context.shadowBlur = 0;
+    context.lineWidth = drawing.thickness;
+    context.globalAlpha = 1;
+    
+    context.beginPath();
+    context.moveTo(drawing.points[0].x, drawing.points[0].y);
+    for (let i = 1; i < drawing.points.length; i++) {
+      context.lineTo(drawing.points[i].x, drawing.points[i].y);
+    }
+    context.stroke();
+    
+    // Reset shadow
+    context.shadowColor = 'transparent';
+    context.shadowBlur = 0;
+  }, []);
+
   const redrawCanvas = useCallback(() => {
     const context = contextRef.current;
     if (!context) return;
@@ -78,6 +127,7 @@ export function useDrawing() {
     drawings.forEach((drawing) => {
       context.strokeStyle = drawing.color;
       context.lineWidth = drawing.thickness;
+      context.globalAlpha = 1;
       
       if (drawing.points.length > 1) {
         context.beginPath();
@@ -91,23 +141,14 @@ export function useDrawing() {
       }
     });
 
-    // Draw temporary drawings (laser mode)
+    // Draw temporary drawings (laser mode) with glow effect
     temporaryDrawings.forEach((drawing) => {
-      context.strokeStyle = drawing.color;
-      context.lineWidth = drawing.thickness;
-      
-      if (drawing.points.length > 1) {
-        context.beginPath();
-        context.moveTo(drawing.points[0].x, drawing.points[0].y);
-        
-        for (let i = 1; i < drawing.points.length; i++) {
-          context.lineTo(drawing.points[i].x, drawing.points[i].y);
-        }
-        
-        context.stroke();
-      }
+      drawLaserStroke(context, drawing);
     });
-  }, [drawings, temporaryDrawings]);
+    
+    // Reset context state
+    context.globalAlpha = 1;
+  }, [drawings, temporaryDrawings, drawLaserStroke]);
 
   const getEventPoint = useCallback((e: MouseEvent | TouchEvent): Point => {
     const canvas = canvasRef.current;
@@ -142,6 +183,16 @@ export function useDrawing() {
     setState(prev => ({ ...prev, isDrawing: true }));
     
     const context = contextRef.current;
+    
+    // Apply glow effect for laser mode
+    if (state.pointerMode === 'laser') {
+      context.shadowColor = state.currentColor;
+      context.shadowBlur = state.currentThickness + 4;
+    } else {
+      context.shadowColor = 'transparent';
+      context.shadowBlur = 0;
+    }
+    
     context.strokeStyle = state.currentColor;
     context.lineWidth = state.currentThickness;
     context.beginPath();
@@ -159,6 +210,11 @@ export function useDrawing() {
     const context = contextRef.current;
     context.lineTo(point.x, point.y);
     context.stroke();
+    
+    // Clear and reset fade timer while drawing
+    if (fadeTimeoutRef.current) {
+      clearTimeout(fadeTimeoutRef.current);
+    }
   }, [state.isDrawing, state.isLaserMode, getEventPoint]);
 
   const stopDrawing = useCallback(() => {
@@ -173,10 +229,10 @@ export function useDrawing() {
         clearTimeout(fadeTimeoutRef.current);
       }
       
-      // Set new timeout to fade laser pointer after 2 seconds
+      // Set new timeout to fade laser pointer after 1 second
       fadeTimeoutRef.current = setTimeout(() => {
         setTemporaryDrawings([]);
-      }, 2000);
+      }, 1000);
     } else {
       // For pen mode, add to permanent drawings
       setDrawings(prev => [...prev, currentDrawing.current!]);

@@ -69,7 +69,7 @@ export function useDrawing() {
   }, []);
 
   const drawLaserStroke = useCallback((context: CanvasRenderingContext2D, drawing: Drawing) => {
-    if (drawing.points.length < 2) return;
+    if (!drawing || !drawing.points || drawing.points.length < 2) return;
     
     // Create glowing laser effect with multiple layers
     const glowSize = drawing.thickness + 4;
@@ -125,8 +125,10 @@ export function useDrawing() {
 
     // Draw permanent drawings (pen mode)
     drawings.forEach((drawing) => {
+      if (!drawing || !drawing.points || !drawing.color) return;
+      
       context.strokeStyle = drawing.color;
-      context.lineWidth = drawing.thickness;
+      context.lineWidth = drawing.thickness || 4;
       context.globalAlpha = 1;
       
       if (drawing.points.length > 1) {
@@ -143,7 +145,9 @@ export function useDrawing() {
 
     // Draw temporary drawings (laser mode) with glow effect
     temporaryDrawings.forEach((drawing) => {
-      drawLaserStroke(context, drawing);
+      if (drawing) {
+        drawLaserStroke(context, drawing);
+      }
     });
     
     // Reset context state
@@ -234,22 +238,27 @@ export function useDrawing() {
   const stopDrawing = useCallback(() => {
     if (!state.isDrawing || !currentDrawing.current) return;
     
-    if (state.pointerMode === 'laser') {
-      // For laser mode, add to temporary drawings and set fade timer
-      setTemporaryDrawings(prev => [...prev, currentDrawing.current!]);
-      
-      // Clear any existing timeout
-      if (fadeTimeoutRef.current) {
-        clearTimeout(fadeTimeoutRef.current);
+    const drawing = currentDrawing.current;
+    
+    // Only add drawing if it has valid data
+    if (drawing && drawing.points && drawing.points.length > 0) {
+      if (state.pointerMode === 'laser') {
+        // For laser mode, add to temporary drawings and set fade timer
+        setTemporaryDrawings(prev => [...prev, drawing]);
+        
+        // Clear any existing timeout
+        if (fadeTimeoutRef.current) {
+          clearTimeout(fadeTimeoutRef.current);
+        }
+        
+        // Set new timeout to fade laser pointer after 1 second
+        fadeTimeoutRef.current = setTimeout(() => {
+          setTemporaryDrawings([]);
+        }, 1000);
+      } else {
+        // For pen mode, add to permanent drawings
+        setDrawings(prev => [...prev, drawing]);
       }
-      
-      // Set new timeout to fade laser pointer after 1 second
-      fadeTimeoutRef.current = setTimeout(() => {
-        setTemporaryDrawings([]);
-      }, 1000);
-    } else {
-      // For pen mode, add to permanent drawings
-      setDrawings(prev => [...prev, currentDrawing.current!]);
     }
     
     currentDrawing.current = null;
